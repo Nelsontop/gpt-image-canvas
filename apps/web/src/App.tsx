@@ -17,6 +17,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Tldraw,
+  createShapeId,
   type Editor,
   type TLAsset,
   type TLAssetContext,
@@ -524,7 +525,7 @@ function createTldrawAssetId(assetId: string): TLAssetId {
 }
 
 function createTldrawShapeId(): TLShapeId {
-  return `shape:${crypto.randomUUID()}` as TLShapeId;
+  return createShapeId();
 }
 
 function displaySize(size: ImageSize): { width: number; height: number } {
@@ -1833,31 +1834,39 @@ export function App() {
       return;
     }
 
-    requestGenerationNotificationPermission();
-
     const controller = new AbortController();
     const requestId = generationRequestRef.current + 1;
     generationRequestRef.current = requestId;
-    const placeholderSet = createGenerationPlaceholders(editor, input, requestId, {
-      selectPlaceholders: requestMode !== "reference"
-    });
-    const temporaryRecord = createTemporaryGenerationRecord({
-      requestId,
-      submitInput: input,
-      requestMode,
-      referenceAssetId
-    });
-
-    activeGenerationsRef.current.set(requestId, {
-      requestId,
-      temporaryRecordId: temporaryRecord.id,
-      controller,
-      placeholderSet
-    });
-    setActiveGenerationCount(activeGenerationsRef.current.size);
-    setGenerationHistory((history) => [temporaryRecord, ...history.filter((record) => record.id !== temporaryRecord.id)].slice(0, 20));
+    let placeholderSet: ActiveGenerationPlaceholders | null = null;
+    let temporaryRecord: GenerationRecord | null = null;
+    let isTaskRegistered = false;
 
     try {
+      requestGenerationNotificationPermission();
+
+      placeholderSet = createGenerationPlaceholders(editor, input, requestId, {
+        selectPlaceholders: requestMode !== "reference"
+      });
+      const currentTemporaryRecord = createTemporaryGenerationRecord({
+        requestId,
+        submitInput: input,
+        requestMode,
+        referenceAssetId
+      });
+      temporaryRecord = currentTemporaryRecord;
+
+      activeGenerationsRef.current.set(requestId, {
+        requestId,
+        temporaryRecordId: currentTemporaryRecord.id,
+        controller,
+        placeholderSet
+      });
+      isTaskRegistered = true;
+      setActiveGenerationCount(activeGenerationsRef.current.size);
+      setGenerationHistory((history) =>
+        [currentTemporaryRecord, ...history.filter((record) => record.id !== currentTemporaryRecord.id)].slice(0, 20)
+      );
+
       const referenceForRequest = requestMode === "reference" ? await resolveReference?.(controller.signal) : undefined;
       if (requestMode === "reference" && !referenceForRequest) {
         throw new Error("请先选择一张可用的参考图像。");
@@ -1908,7 +1917,7 @@ export function App() {
       }
 
       setGenerationHistory((history) =>
-        [body.record, ...history.filter((record) => record.id !== temporaryRecord.id && record.id !== body.record.id)].slice(0, 20)
+        [body.record, ...history.filter((record) => record.id !== currentTemporaryRecord.id && record.id !== body.record.id)].slice(0, 20)
       );
       const insertedCount = replaceGenerationPlaceholders(editor, placeholderSet, body.record);
       const failedCount =
@@ -1926,18 +1935,23 @@ export function App() {
         setGenerationError(generationFailureMessage(body.record));
       }
     } catch (error) {
-      if (controller.signal.aborted || !activeGenerationsRef.current.has(requestId)) {
+      if (controller.signal.aborted || (isTaskRegistered && !activeGenerationsRef.current.has(requestId))) {
         return;
       }
 
       const message = error instanceof Error ? error.message : "生成失败，请重试。";
-      markGenerationPlaceholdersFailed(editor, placeholderSet, message);
-      setGenerationHistory((history) =>
-        history.map((record) => (record.id === temporaryRecord.id ? { ...record, status: "failed", error: message } : record))
-      );
+      if (placeholderSet) {
+        markGenerationPlaceholdersFailed(editor, placeholderSet, message);
+      }
+      if (temporaryRecord) {
+        const failedRecordId = temporaryRecord.id;
+        setGenerationHistory((history) =>
+          history.map((record) => (record.id === failedRecordId ? { ...record, status: "failed", error: message } : record))
+        );
+      }
       setGenerationError(message);
     } finally {
-      if (activeGenerationsRef.current.delete(requestId)) {
+      if (isTaskRegistered && activeGenerationsRef.current.delete(requestId)) {
         setActiveGenerationCount(activeGenerationsRef.current.size);
       }
     }

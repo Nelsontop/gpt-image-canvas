@@ -128,13 +128,14 @@ class OpenAIImageProvider implements ImageProvider {
           prompt: input.prompt,
           size: input.sizeApiValue,
           quality: input.quality,
+          response_format: "b64_json",
           output_format: input.outputFormat,
           n: input.count
         }),
         { signal }
       );
 
-      return await normalizeProviderResponse(response, input.sizeApiValue, this.config.model, signal);
+      return await normalizeProviderResponse(response, input.sizeApiValue, this.config.model, signal, this.config.baseURL);
     } catch (error) {
       throw toProviderError(error);
     }
@@ -150,13 +151,14 @@ class OpenAIImageProvider implements ImageProvider {
           prompt: input.prompt,
           size: input.sizeApiValue,
           quality: input.quality,
+          response_format: "b64_json",
           output_format: input.outputFormat,
           n: input.count
         }),
         { signal }
       );
 
-      return await normalizeProviderResponse(response, input.sizeApiValue, this.config.model, signal);
+      return await normalizeProviderResponse(response, input.sizeApiValue, this.config.model, signal, this.config.baseURL);
     } catch (error) {
       throw toProviderError(error);
     }
@@ -214,13 +216,14 @@ async function normalizeProviderResponse(
   response: ImagesResponse,
   sizeApiValue: string,
   model: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  baseURL?: string
 ): Promise<ProviderResult> {
   if (!Array.isArray(response.data) || response.data.length === 0) {
     throw new ProviderError("unsupported_provider_behavior", "OpenAI 图像服务没有返回图像结果。", 502);
   }
 
-  const images = await Promise.all(response.data.map((item) => providerImageFromResponseItem(item, signal)));
+  const images = await Promise.all(response.data.map((item) => providerImageFromResponseItem(item, signal, baseURL)));
 
   if (images.some((image) => !image.b64Json)) {
     throw new ProviderError("unsupported_provider_behavior", "OpenAI 图像服务没有返回 base64 图像数据。", 502);
@@ -233,7 +236,7 @@ async function normalizeProviderResponse(
   };
 }
 
-async function providerImageFromResponseItem(item: Image, signal?: AbortSignal): Promise<ProviderImage> {
+async function providerImageFromResponseItem(item: Image, signal?: AbortSignal, baseURL?: string): Promise<ProviderImage> {
   if (typeof item.b64_json === "string" && item.b64_json) {
     return {
       b64Json: item.b64_json
@@ -242,7 +245,7 @@ async function providerImageFromResponseItem(item: Image, signal?: AbortSignal):
 
   if (typeof item.url === "string" && item.url) {
     return {
-      b64Json: await downloadProviderImageUrl(item.url, signal)
+      b64Json: await downloadProviderImageUrl(item.url, signal, baseURL)
     };
   }
 
@@ -251,8 +254,8 @@ async function providerImageFromResponseItem(item: Image, signal?: AbortSignal):
   };
 }
 
-async function downloadProviderImageUrl(url: string, signal?: AbortSignal): Promise<string> {
-  const parsedUrl = parseProviderImageUrl(url);
+async function downloadProviderImageUrl(url: string, signal?: AbortSignal, baseURL?: string): Promise<string> {
+  const parsedUrl = parseProviderImageUrl(url, baseURL);
   if (!parsedUrl) {
     throw new ProviderError("unsupported_provider_behavior", "OpenAI 图像服务返回的图片 URL 不受支持。", 502);
   }
@@ -286,9 +289,9 @@ async function downloadProviderImageUrl(url: string, signal?: AbortSignal): Prom
   return bytes.toString("base64");
 }
 
-function parseProviderImageUrl(url: string): URL | undefined {
+function parseProviderImageUrl(url: string, baseURL?: string): URL | undefined {
   try {
-    const parsedUrl = new URL(url);
+    const parsedUrl = baseURL ? new URL(url, baseURL) : new URL(url);
     return parsedUrl.protocol === "https:" || parsedUrl.protocol === "http:" || parsedUrl.protocol === "data:"
       ? parsedUrl
       : undefined;

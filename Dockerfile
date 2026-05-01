@@ -6,7 +6,9 @@ ENV PATH="$PNPM_HOME:$PATH"
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
+RUN if ! command -v corepack >/dev/null 2>&1; then npm install -g --force corepack@latest; fi \
+  && corepack enable \
+  && corepack prepare pnpm@9.14.2 --activate
 
 FROM base AS build
 
