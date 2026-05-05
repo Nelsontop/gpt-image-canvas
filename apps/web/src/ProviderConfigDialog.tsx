@@ -851,26 +851,6 @@ export function ProviderConfigDialog({
                   ) : null}
                 </section>
 
-                <div className="provider-workspace__side">
-                  <section className="provider-source-mini provider-source-mini--agent-summary" data-available={agentConfig?.configured ?? false}>
-                    <header className="provider-source-mini__header">
-                      <span className="provider-source-mini__icon">
-                        <Bot className="size-4" aria-hidden="true" />
-                      </span>
-                      <div className="provider-source-mini__copy">
-                        <h3>{t("agentLlmTitle")}</h3>
-                        <p>{agentConfig?.configured ? t("providerAvailable") : t("providerUnavailable")}</p>
-                      </div>
-                      <ProviderAvailabilityBadge available={agentConfig?.configured ?? false} />
-                    </header>
-                    <dl className="provider-mini-grid">
-                      <MiniRow label={t("providerFieldModel")} value={agentForm.model.trim() || t("commonNotSet")} />
-                      <MiniRow label={t("providerFieldBaseUrl")} value={agentForm.baseUrl.trim() || t("providerApiOfficial")} />
-                      <MiniRow label={t("providerFieldTimeout")} value={formatTimeout(agentTimeoutSummary, t)} />
-                      <MiniRow label="Key" masked value={agentApiKeyMask ?? (hasSavedAgentKey ? t("commonSaved") : t("commonNotSet"))} />
-                    </dl>
-                  </section>
-                </div>
               </div>
             </div>
           )}
