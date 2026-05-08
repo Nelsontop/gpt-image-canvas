@@ -459,11 +459,12 @@ const zhMessages = {
   generationReferenceAlt: ({ index, name }: { index: number; name: string }) => `参考图 ${index}：${name}`,
   generationReferenceNeed: ({ max }: { max: number }) => `请选择 1-${max} 张参考图`,
   generationReferenceReady: ({ count }: { count: number }) => `${count} 张参考图到画布已就绪`,
+  generationReferenceSelectionHelp: ({ max }: { max: number }) => `支持 1-${max} 张参考图。可按住 Shift 多选，或直接框选多张图片。`,
   generationRequireReference: ({ max }: { max: number }) => `请先选择 1-${max} 张可用的参考图像。`,
   generationRerunRunning: "任务运行中",
   generationSelectedReferenceMany: ({ count }: { count: number }) =>
     `已选中 ${count} 张参考图，将按画布位置从上到下、从左到右发送。`,
-  generationSelectedReferenceOne: "已选中 1 张图片，将使用它作为本次参考图。",
+  generationSelectedReferenceOne: "已选中 1 张图片。你还可以继续选择更多图片，最多 3 张一起作为参考图。",
   generationSelectionMissingSource: "选中的图片缺少可读取的数据源，无法作为参考图。",
   generationSelectionNonImage: ({ max }: { max: number }) => `当前选择中包含非图片对象。请只圈选 1-${max} 张图片作为参考。`,
   generationSelectionTooMany: ({ count, max }: { count: number; max: number }) =>
@@ -947,11 +948,12 @@ const enMessages: I18nMessages = {
   generationReferenceAlt: ({ index, name }) => `Reference image ${index}: ${name}`,
   generationReferenceNeed: ({ max }) => `Select 1-${max} reference images`,
   generationReferenceReady: ({ count }) => `${count} reference images are ready`,
+  generationReferenceSelectionHelp: ({ max }) => `You can use 1-${max} reference images. Hold Shift to multi-select, or drag-select multiple images on the canvas.`,
   generationRequireReference: ({ max }) => `Select 1-${max} usable reference images first.`,
   generationRerunRunning: "Task running",
   generationSelectedReferenceMany: ({ count }) =>
     `${count} reference images selected. They will be sent top-to-bottom, left-to-right by canvas position.`,
-  generationSelectedReferenceOne: "1 image selected and will be used as this reference.",
+  generationSelectedReferenceOne: "1 image selected. You can keep selecting more, up to 3 total references.",
   generationSelectionMissingSource: "The selected image has no readable data source.",
   generationSelectionNonImage: ({ max }) => `The selection includes non-image objects. Select only 1-${max} images as references.`,
   generationSelectionTooMany: ({ count, max }) => `${count} images selected. Reference images support up to ${max}.`,

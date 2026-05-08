@@ -5152,6 +5152,9 @@ export function App() {
                   <p className="mt-1 text-xs leading-5" data-testid="reference-hint">
                     {referenceSelection.hint}
                   </p>
+                  <p className="mt-1 text-[11px] leading-5 opacity-80" data-testid="reference-selection-help">
+                    {t("generationReferenceSelectionHelp", { max: MAX_REFERENCE_IMAGES })}
+                  </p>
                   {referenceSelection.status === "ready" ? (
                     <div className="reference-preview-list">
                       {referenceSelection.references.map((reference, index) => (
