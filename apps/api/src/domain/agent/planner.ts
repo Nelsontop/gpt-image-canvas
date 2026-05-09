@@ -393,6 +393,24 @@ function emitAssistantDelta(onAssistantDelta: AgentPlannerInput["onAssistantDelt
 }
 
 export function createDeepAgentsPlanner(config: UsableAgentLlmConfig, plannerOptions?: AgentPlannerOptions): GenerationPlanAgentRunner {
+  const primaryRunner = createPlannerRunner(config, plannerOptions);
+  const fallbackBaseUrl = agentPlannerFallbackBaseUrl(config.baseUrl);
+  if (!fallbackBaseUrl) {
+    return primaryRunner;
+  }
+
+  const fallbackRunner = createPlannerRunner(
+    {
+      ...config,
+      baseUrl: fallbackBaseUrl
+    },
+    plannerOptions
+  );
+
+  return createAgentRunnerWithBaseUrlFallback(primaryRunner, fallbackRunner, config.baseUrl);
+}
+
+function createPlannerRunner(config: UsableAgentLlmConfig, plannerOptions?: AgentPlannerOptions): GenerationPlanAgentRunner {
   const isDeepSeek = isDeepSeekAgentConfig(config);
   const model = createAgentChatModel(config, isDeepSeek, plannerOptions);
 
@@ -406,6 +424,78 @@ export function createDeepAgentsPlanner(config: UsableAgentLlmConfig, plannerOpt
     systemPrompt: createPlanningSystemPrompt(),
     tools: []
   }) as unknown as GenerationPlanAgentRunner;
+}
+
+export function createAgentRunnerWithBaseUrlFallback(
+  primaryRunner: GenerationPlanAgentRunner,
+  fallbackRunner: GenerationPlanAgentRunner,
+  baseUrl?: string
+): GenerationPlanAgentRunner {
+  return {
+    streamsThinkingDeltas: primaryRunner.streamsThinkingDeltas,
+    async invoke(input, options) {
+      try {
+        return await primaryRunner.invoke(input, options);
+      } catch (error) {
+        if (!shouldRetryAgentPlannerWithBaseUrlFallback(error, baseUrl)) {
+          throw error;
+        }
+
+        return await fallbackRunner.invoke(input, options);
+      }
+    }
+  };
+}
+
+export function agentPlannerFallbackBaseUrl(baseUrl?: string): string | undefined {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname !== "" && parsed.pathname !== "/") {
+      return undefined;
+    }
+
+    parsed.pathname = "/v1";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/u, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldRetryAgentPlannerWithBaseUrlFallback(error: unknown, baseUrl?: string): boolean {
+  if (!agentPlannerFallbackBaseUrl(baseUrl)) {
+    return false;
+  }
+
+  const detail = error instanceof Error ? error.message.toLowerCase() : "";
+  const status = plannerErrorStatus(error);
+  return (status === 404 || detail.includes("404")) && detail.includes("page not found");
+}
+
+function plannerErrorStatus(error: unknown): number | undefined {
+  if (typeof error === "object" && error !== null && "status" in error && typeof error.status === "number") {
+    return error.status;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "cause" in error &&
+    typeof error.cause === "object" &&
+    error.cause !== null &&
+    "status" in error.cause &&
+    typeof error.cause.status === "number"
+  ) {
+    return error.cause.status;
+  }
+
+  return undefined;
 }
 
 function createAgentChatModel(

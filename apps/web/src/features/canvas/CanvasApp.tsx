@@ -55,6 +55,7 @@ import {
   GenerationPlaceholderShapeUtil,
   type GenerationPlaceholderShape
 } from "./GenerationPlaceholderShape";
+import { fitAssetIntoPlacement, normalizeGeneratedImageShapesInSnapshot } from "./imagePlacement";
 import {
   AGENT_PLAN_NODE_TYPE,
   AgentPlanNodeShapeUtil,
@@ -117,6 +118,7 @@ import {
 } from "@gpt-image-canvas/shared";
 import { LOCALES, localizedApiErrorMessage, useI18n, type Locale, type Translate } from "../../shared/i18n";
 import { assetDownloadUrl, assetPreviewUrl } from "../../shared/api/assets";
+import { createClientId, createClientUuid } from "../../shared/id";
 
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 const AGENT_SOCKET_PING_INTERVAL_MS = 15_000;
@@ -658,6 +660,20 @@ function firstDownloadableAsset(record: GenerationRecord): GeneratedAsset | unde
   return record.outputs.find((output) => output.status === "succeeded" && output.asset)?.asset;
 }
 
+function generatedAssetIdsFromHistory(history: GenerationRecord[]): Set<string> {
+  const assetIds = new Set<string>();
+
+  for (const record of history) {
+    for (const output of record.outputs) {
+      if (output.status === "succeeded" && output.asset?.id) {
+        assetIds.add(output.asset.id);
+      }
+    }
+  }
+
+  return assetIds;
+}
+
 function successfulOutputCount(record: GenerationRecord): number {
   return record.outputs.filter((output) => output.status === "succeeded" && output.asset).length;
 }
@@ -976,16 +992,28 @@ function createImageShape(
   promptValue: string
 ): Partial<TLImageShape> & { id: TLShapeId; type: "image" } {
   const assetId = createTldrawAssetId(asset.id);
+  const fittedPlacement = fitAssetIntoPlacement(
+    {
+      width: asset.width,
+      height: asset.height
+    },
+    {
+      x: placement.x,
+      y: placement.y,
+      width: placement.width,
+      height: placement.height
+    }
+  );
 
   return {
     id: createTldrawShapeId(),
     type: "image",
-    x: placement.x,
-    y: placement.y,
+    x: fittedPlacement.x,
+    y: fittedPlacement.y,
     props: {
       assetId,
-      w: placement.width,
-      h: placement.height,
+      w: fittedPlacement.width,
+      h: fittedPlacement.height,
       url: asset.url,
       playing: true,
       crop: null,
@@ -2785,7 +2813,10 @@ export function App() {
         }
 
         const project = (await response.json()) as ProjectState;
-        const snapshot = filterLoadingPlaceholdersFromSnapshot(project.snapshot);
+        const snapshot = normalizeGeneratedImageShapesInSnapshot(
+          filterLoadingPlaceholdersFromSnapshot(project.snapshot),
+          generatedAssetIdsFromHistory(project.history)
+        );
         if (isPersistedSnapshot(snapshot)) {
           setProjectSnapshot(snapshot);
         }
@@ -3702,7 +3733,7 @@ export function App() {
       ...messages,
       {
         ...message,
-        id: `agent-message-${crypto.randomUUID()}`,
+        id: createClientId("agent-message-"),
         timestamp: new Date().toISOString()
       }
     ]);
@@ -3780,7 +3811,7 @@ export function App() {
       return [
         ...messages,
         {
-          id: `agent-message-${crypto.randomUUID()}`,
+          id: createClientId("agent-message-"),
           role,
           content: delta,
           timestamp: new Date().toISOString(),
@@ -3823,7 +3854,7 @@ export function App() {
       return [
         ...messages,
         {
-          id: `agent-message-${crypto.randomUUID()}`,
+          id: createClientId("agent-message-"),
           role: "thinking",
           content,
           timestamp: new Date().toISOString(),
@@ -3877,7 +3908,7 @@ export function App() {
       return [
         ...messages,
         {
-          id: `agent-message-${crypto.randomUUID()}`,
+          id: createClientId("agent-message-"),
           role: "thinking",
           content,
           details: delta,
@@ -3920,7 +3951,7 @@ export function App() {
       return [
         ...messages,
         {
-          id: `agent-message-${crypto.randomUUID()}`,
+          id: createClientId("agent-message-"),
           role: "plan",
           content: fallbackContent,
           timestamp: new Date().toISOString(),
@@ -4193,7 +4224,7 @@ export function App() {
     const shapeId = addAgentOutputAssetToCanvas(event);
     rememberAgentOutputReference(event, shapeId);
     const preview: AgentChatAssetPreview = {
-      id: `agent-preview-${event.jobId}-${event.assetId}-${crypto.randomUUID()}`,
+      id: `agent-preview-${event.jobId}-${event.assetId}-${createClientUuid()}`,
       assetId: event.assetId,
       jobId: event.jobId,
       outputId: event.outputId,
@@ -4217,7 +4248,7 @@ export function App() {
       return [
         ...messages,
         {
-          id: `agent-message-${crypto.randomUUID()}`,
+          id: createClientId("agent-message-"),
           role: "assistant",
           content: t("agentPreviewReady"),
           timestamp: new Date().toISOString(),
@@ -4707,7 +4738,7 @@ export function App() {
     }
 
     const requestId = `agent-request-${agentRequestRef.current + 1}`;
-    const runId = `agent-run-${crypto.randomUUID()}`;
+    const runId = createClientId("agent-run-");
     agentRequestRef.current += 1;
     activeAgentRunIdRef.current = runId;
     setAgentInput("");
@@ -4783,7 +4814,7 @@ export function App() {
     socket.send(
       JSON.stringify({
         type: "cancel_run",
-        requestId: `agent-cancel-${crypto.randomUUID()}`,
+        requestId: createClientId("agent-cancel-"),
         runId
       })
     );
@@ -4797,7 +4828,7 @@ export function App() {
         socket.send(
           JSON.stringify({
             type: "cancel_run",
-            requestId: `agent-plan-cancel-${crypto.randomUUID()}`,
+            requestId: createClientId("agent-plan-cancel-"),
             runId
           })
         );
@@ -4826,7 +4857,7 @@ export function App() {
       return;
     }
 
-    const runId = `agent-plan-run-${crypto.randomUUID()}`;
+    const runId = createClientId("agent-plan-run-");
     activeAgentRunIdRef.current = runId;
     setAgentRunStatus("connecting");
 
@@ -4846,7 +4877,7 @@ export function App() {
       socket.send(
         JSON.stringify({
           type: action === "execute" ? "execute_plan" : "retry_failed",
-          requestId: `agent-plan-action-${crypto.randomUUID()}`,
+          requestId: createClientId("agent-plan-action-"),
           runId,
           planId: plan.id,
           plan,

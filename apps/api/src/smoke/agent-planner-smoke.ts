@@ -1,6 +1,8 @@
 import {
+  agentPlannerFallbackBaseUrl,
   agentModelKwargsForConfig,
   buildPlannerUserMessage,
+  createAgentRunnerWithBaseUrlFallback,
   createDirectChatPlanner,
   createGenerationPlan,
   extractReasoningFromAgentResult,
@@ -52,6 +54,8 @@ async function main(): Promise<void> {
   smokeInvalidJsonRejection();
   smokeNoVisionReferenceHandling();
   smokeDeepSeekPlannerKwargs();
+  smokePlannerBaseUrlFallback();
+  await smokePlannerRunnerRetriesWithV1Fallback();
   smokeReasoningExtraction();
   await smokePlannerQuestionOutput();
   await smokeMissingSelectedReferenceQuestion();
@@ -424,6 +428,53 @@ function smokeDeepSeekPlannerKwargs(): void {
     model: "gpt-4.1-mini"
   });
   expect(Object.keys(openAIKwargs).length === 0, "OpenAI planner kwargs are unchanged");
+}
+
+function smokePlannerBaseUrlFallback(): void {
+  expect(
+    agentPlannerFallbackBaseUrl("http://agent.internal:8317") === "http://agent.internal:8317/v1",
+    "root agent base URL falls back to /v1"
+  );
+  expect(
+    agentPlannerFallbackBaseUrl("http://agent.internal:8317/") === "http://agent.internal:8317/v1",
+    "trailing slash root agent base URL falls back to /v1"
+  );
+  expect(
+    agentPlannerFallbackBaseUrl("http://agent.internal:8317/v1") === undefined,
+    "existing /v1 agent base URL does not re-fallback"
+  );
+  expect(
+    agentPlannerFallbackBaseUrl("http://agent.internal:8317/openai") === undefined,
+    "custom agent path is preserved without fallback"
+  );
+}
+
+async function smokePlannerRunnerRetriesWithV1Fallback(): Promise<void> {
+  const primaryCalls: string[] = [];
+  const fallbackCalls: string[] = [];
+  const wrapped = createAgentRunnerWithBaseUrlFallback(
+    {
+      invoke: async () => {
+        primaryCalls.push("primary");
+        throw Object.assign(new Error("404 404 page not found"), { status: 404 });
+      }
+    },
+    {
+      invoke: async () => {
+        fallbackCalls.push("fallback");
+        return { messages: [{ content: "{\"schemaVersion\":\"2026-01-01\",\"jobs\":[],\"edges\":[]}" }] };
+      }
+    },
+    "http://agent.internal:8317"
+  );
+
+  const result = await wrapped.invoke({
+    messages: [{ role: "user", content: "test" }]
+  });
+
+  expect(primaryCalls.length === 1, "planner fallback still tries primary runner once");
+  expect(fallbackCalls.length === 1, "planner fallback retries once with /v1 runner");
+  expect(isRecord(result), "planner fallback returns the fallback runner result");
 }
 
 function smokeReasoningExtraction(): void {
